@@ -85,10 +85,8 @@ func main() {
 		// second element returned from range is a *COPY* of underlying array element
 		// https://tour.golang.org/moretypes/7
 
-		elementRef := &cryptocurrencies[i]
-
 		wg.Add(1)
-		go fetchDataWorker(&wg, elementRef, printer)
+		go fetchDataWorker(&wg, &cryptocurrencies[i], printer)
 	}
 
 	wg.Wait()
