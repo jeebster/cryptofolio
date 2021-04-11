@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"flag"
+	"fmt"
 	"log"
 	"os"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -13,7 +14,7 @@ import (
 	"golang.org/x/text/message"
 )
 
-const MANIFEST_FILENAME = "cryptocurrencies.json"
+const PROGRAM_TITLE = "Cryptocurrency Portfolio Balances"
 
 func fetchDataWorker(wg *sync.WaitGroup, c *asset.Cryptocurrency, printer *message.Printer) {
 	defer wg.Done()
@@ -39,7 +40,7 @@ func fetchDataWorker(wg *sync.WaitGroup, c *asset.Cryptocurrency, printer *messa
 func parseManifestToCryptocurrencyAssets(filepath string) ([]asset.Cryptocurrency, error) {
 	var assetData []asset.Cryptocurrency
 
-	fileContents, err := ioutil.ReadFile(filepath)
+	fileContents, err := os.ReadFile(filepath)
 	if err != nil {
 		return make([]asset.Cryptocurrency, 0), err
 	}
@@ -53,23 +54,37 @@ func parseManifestToCryptocurrencyAssets(filepath string) ([]asset.Cryptocurrenc
 }
 
 func main() {
-	printer := message.NewPrinter(message.MatchLanguage("en"))
-
-	printer.Println("Cryptocurrency Portfolio Balances\n")
-
-	ex, err := os.Executable()
-	if err != nil {
-		log.Fatal(
-			printer.Print("Error obtaining current executable: ", err),
-		)
+	var pathEx string
+	os := runtime.GOOS
+	switch os {
+	case "windows":
+		pathEx = `C:\Users\guest\documents\manifest.json`
+	case "darwin":
+		pathEx = "/Users/guest/documents/manifest.json"
+	case "linux":
+		pathEx = "/home/guest/documents/manifest.json"
 	}
 
-	pwd := filepath.Dir(ex)
-	manifestPath := printer.Sprintf("%s/%s", pwd, MANIFEST_FILENAME)
+	manifestFlageDescription := fmt.Sprintf("absolute path to your manifest JSON file, e.g. %s", pathEx)
 
-	crossPlatformManifestPath := filepath.FromSlash(manifestPath)
+	manifestPtr := flag.String("manifest", "", manifestFlageDescription)
+	flag.Parse()
 
-	cryptocurrencies, err := parseManifestToCryptocurrencyAssets(crossPlatformManifestPath)
+	if len(*manifestPtr) == 0 {
+		log.Fatal("You must supply a manifest JSON file via the -manifest flag. Run the program with the -h flag for more information.")
+	}
+
+	printer := message.NewPrinter(message.MatchLanguage("en"))
+
+	programSubtitleBuilder := strings.Builder{}
+	for i := 0; i < len(PROGRAM_TITLE)-1; i++ {
+		programSubtitleBuilder.WriteRune('_')
+	}
+
+	printer.Println(PROGRAM_TITLE)
+	printer.Println(programSubtitleBuilder.String(), "\n")
+
+	cryptocurrencies, err := parseManifestToCryptocurrencyAssets(*manifestPtr)
 
 	if err != nil {
 		log.Fatal(
@@ -79,7 +94,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	printer.Printf("Fetching price data from Coincap.io...\n\n")
+	printer.Println("Fetching price data from coincap.io...\n")
 
 	for i, _ := range cryptocurrencies {
 		// second element returned from range is a *COPY* of underlying array element
@@ -90,5 +105,6 @@ func main() {
 	}
 
 	wg.Wait()
-	printer.Printf("\nTotal portfolio balance: $%f", asset.CalculateTotalAssetsBalance(cryptocurrencies))
+	printer.Println()
+	printer.Printf("Total portfolio balance: $%f", asset.CalculateTotalAssetsBalance(cryptocurrencies))
 }
