@@ -106,5 +106,5 @@ func main() {
 
 	wg.Wait()
 	printer.Println()
-	printer.Printf("Total portfolio balance: $%f", asset.CalculateTotalAssetsBalance(cryptocurrencies))
+	printer.Printf("Total portfolio balance: $%f\n", asset.CalculateTotalAssetsBalance(cryptocurrencies))
 }
