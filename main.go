@@ -8,7 +8,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/jeebster/cryptofolio/asset"
 	"golang.org/x/text/message"
@@ -16,28 +15,17 @@ import (
 
 const PROGRAM_TITLE = "Cryptocurrency Portfolio Balances"
 
-func fetchDataWorker(wg *sync.WaitGroup, c *asset.Cryptocurrency, printer *message.Printer) {
-	defer wg.Done()
-
-	err := c.FetchData()
-	if err != nil {
-		log.Fatal(
-			printer.Printf("Error fetching data from Coincap.io: %s", err),
-		)
+func buildQueryString(cryptocurrencies []asset.Cryptocurrency) string {
+	queryParamsBuilder := strings.Builder{}
+	queryParamsBuilder.WriteString("?ids=")
+	for _, c := range cryptocurrencies {
+		queryParamsBuilder.WriteString(c.Id + ",")
 	}
 
-	printer.Printf(
-		"%f %s at $%f USD = $%f\n",
-		c.Quantity,
-		strings.ToUpper(
-			c.Symbol,
-		),
-		c.Price,
-		c.Balance,
-	)
+	return queryParamsBuilder.String()
 }
 
-func parseManifestToCryptocurrencyAssets(filepath string) ([]asset.Cryptocurrency, error) {
+func parseManifest(filepath string) ([]asset.Cryptocurrency, error) {
 	var assetData []asset.Cryptocurrency
 
 	fileContents, err := os.ReadFile(filepath)
@@ -84,7 +72,7 @@ func main() {
 	printer.Println(PROGRAM_TITLE)
 	printer.Println(programSubtitleBuilder.String(), "\n")
 
-	cryptocurrencies, err := parseManifestToCryptocurrencyAssets(*manifestPtr)
+	manifestDataCryptocurrencies, err := parseManifest(*manifestPtr)
 
 	if err != nil {
 		log.Fatal(
@@ -92,19 +80,58 @@ func main() {
 		)
 	}
 
-	var wg sync.WaitGroup
-
 	printer.Println("Fetching price data from coincap.io...\n")
 
-	for i, _ := range cryptocurrencies {
-		// second element returned from range is a *COPY* of underlying array element
-		// https://tour.golang.org/moretypes/7
-
-		wg.Add(1)
-		go fetchDataWorker(&wg, &cryptocurrencies[i], printer)
+	queryParams := buildQueryString(manifestDataCryptocurrencies)
+	apiDataCryptocurrencies, err := asset.FetchAssets(queryParams)
+	if err != nil {
+		log.Fatal(
+			printer.Printf("Error fetching data from coincap.io: %s", err),
+		)
 	}
 
-	wg.Wait()
+	asset.MergeAssetsData(manifestDataCryptocurrencies, apiDataCryptocurrencies)
+	if err != nil {
+		log.Fatal(
+			printer.Printf("Error parsing data from coincap.io: %s", err),
+		)
+	}
+
+	for i, cc := range manifestDataCryptocurrencies {
+		cryptoRef := &manifestDataCryptocurrencies[i]
+		err := cryptoRef.SetBalance()
+		if err != nil {
+			log.Fatal(
+				printer.Printf(
+					"Error setting %s balance: %s",
+					cc.Symbol,
+					err,
+				),
+			)
+		}
+
+		priceAsFloat, err := cc.PriceAsFloat()
+		if err != nil {
+			log.Fatal(
+				printer.Printf(
+					"Error converting %s price string to float: %s",
+					cc.Symbol,
+					err,
+				),
+			)
+		}
+
+		printer.Printf(
+			"%f %s at $%f USD = $%f\n",
+			cc.Quantity,
+			strings.ToUpper(
+				cc.Symbol,
+			),
+			priceAsFloat,
+			cryptoRef.GetBalance(),
+		)
+	}
+
 	printer.Println()
-	printer.Printf("Total portfolio balance: $%f\n", asset.CalculateTotalAssetsBalance(cryptocurrencies))
+	printer.Printf("Total portfolio balance: $%f\n", asset.CalculateTotalAssetsBalance(manifestDataCryptocurrencies))
 }
