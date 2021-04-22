@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/jeebster/cryptofolio/asset"
@@ -96,6 +97,10 @@ func main() {
 			printer.Printf("Error parsing data from coincap.io: %s", err),
 		)
 	}
+
+	sort.Slice(manifestDataCryptocurrencies, func(i, j int) bool {
+		return manifestDataCryptocurrencies[i].Symbol < manifestDataCryptocurrencies[j].Symbol
+	})
 
 	for i, cc := range manifestDataCryptocurrencies {
 		cryptoRef := &manifestDataCryptocurrencies[i]
